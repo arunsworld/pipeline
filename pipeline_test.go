@@ -13,13 +13,12 @@ func Test_Pipeline_With_Filters_And_Transformers(t *testing.T) {
 		expectedOutput := []int{7, 19, 67, 199, 259, 487, 679, 787, 1027, 1159, 1447, 1939, 2119, 2707, 3139, 3367, 3847, 4099, 4627, 5479, 5779, 6727, 7399, 7747, 8467, 8839, 9607}
 
 		t.Run("sequentially", func(t *testing.T) {
-			pp := p.New(
-				p.PreFilter(evenFilter),
-				p.PreFilter(multiplesOf10Remover),
-				p.MustTransform(squareTransformer),
-				p.MustTransform(adderTransformer(3)),
-				p.PostFilter(multiplesOfNRemover(3)),
-			)
+			pp := p.New[int]().
+				Prefilter(evenFilter).
+				Prefilter(multiplesOf10Remover).
+				MustTransform(squareTransformer).
+				MustTransform(adderTransformer(3)).
+				Postfilter(multiplesOfNRemover(3))
 			output, err := pp.Apply(input)
 			if err != nil {
 				t.Fatal(err)
@@ -30,14 +29,12 @@ func Test_Pipeline_With_Filters_And_Transformers(t *testing.T) {
 		})
 
 		t.Run("concurrently", func(t *testing.T) {
-			pp := p.New(
-				p.Concurrency[int](10),
-				p.PreFilter(evenFilter),
-				p.PreFilter(multiplesOf10Remover),
-				p.MustTransform(squareTransformer),
-				p.MustTransform(adderTransformer(3)),
-				p.PostFilter(multiplesOfNRemover(3)),
-			)
+			pp := p.New[int]().
+				Prefilter(evenFilter).
+				Prefilter(multiplesOf10Remover).
+				MustTransform(squareTransformer).
+				MustTransform(adderTransformer(3)).
+				Postfilter(multiplesOfNRemover(3))
 			output, err := pp.Apply(input)
 			if err != nil {
 				t.Fatal(err)

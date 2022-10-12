@@ -7,21 +7,13 @@ import (
 	"github.com/arunsworld/nursery"
 )
 
-func newPipeline[T any](options []Option[T]) Pipeline[T] {
-	result := &pipeline[T]{}
-	for _, o := range options {
-		o.init(result)
+func newPipeline[T any]() Pipeline[T] {
+	return &pipeline[T]{
+		concurrency:         1,
+		preFilterAllowFunc:  noopAllow[T],
+		transformFunc:       noopTransformFunc[T],
+		postFilterAllowFunc: noopAllow[T],
 	}
-	if result.preFilterAllowFunc == nil {
-		result.preFilterAllowFunc = noopAllow[T]
-	}
-	if result.postFilterAllowFunc == nil {
-		result.postFilterAllowFunc = noopAllow[T]
-	}
-	if result.transformFunc == nil {
-		result.transformFunc = noopTransformFunc[T]
-	}
-	return *result
 }
 
 type pipeline[T any] struct {
@@ -31,6 +23,51 @@ type pipeline[T any] struct {
 	transformFunc       func(T) (T, bool, error)
 }
 
+// Setup
+func (p pipeline[T]) Concurrency(c int) Pipeline[T] {
+	p.concurrency = c
+	return p
+}
+
+func (p pipeline[T]) Prefilter(allowFunc func(T) bool) Pipeline[T] {
+	p.addPreFilter(allowFunc)
+	return p
+}
+
+func (p pipeline[T]) TransformWithFilter(transformFunc func(T) (T, bool, error)) Pipeline[T] {
+	p.addTransformFunc(transformFunc)
+	return p
+}
+
+func (p pipeline[T]) MustTransformWithFilter(transformFunc func(T) (T, bool)) Pipeline[T] {
+	p.addTransformFunc(func(v T) (T, bool, error) {
+		newv, ok := transformFunc(v)
+		return newv, ok, nil
+	})
+	return p
+}
+
+func (p pipeline[T]) Transform(transformFunc func(T) (T, error)) Pipeline[T] {
+	p.addTransformFunc(func(v T) (T, bool, error) {
+		newv, err := transformFunc(v)
+		return newv, true, err
+	})
+	return p
+}
+
+func (p pipeline[T]) MustTransform(transformFunc func(T) T) Pipeline[T] {
+	p.addTransformFunc(func(v T) (T, bool, error) {
+		return transformFunc(v), true, nil
+	})
+	return p
+}
+
+func (p pipeline[T]) Postfilter(allowFunc func(T) bool) Pipeline[T] {
+	p.addPostFilter(allowFunc)
+	return p
+}
+
+// Execute
 func (p pipeline[T]) Apply(input []T) ([]T, error) {
 	switch {
 	case p.concurrency <= 1:
@@ -148,6 +185,9 @@ type elementWithIndex[T any] struct {
 }
 
 func (p pipeline[T]) applyConcurrent(input []T) ([]T, error) {
+	if len(input) == 0 {
+		return input, nil
+	}
 	buffer := make([]elementWithIndex[T], 0, len(input))
 	inCh := make(chan elementWithIndex[T], 3)
 	outCh := make(chan elementWithIndex[T], 3)
@@ -383,4 +423,10 @@ func (p pipeline[T]) applyAndFoldConcurrently(input []T, foldOp FoldOperation[T]
 		},
 	)
 	return result, err
+}
+
+func noopAllow[T any](T) bool { return true }
+
+func noopTransformFunc[T any](v T) (T, bool, error) {
+	return v, true, nil
 }

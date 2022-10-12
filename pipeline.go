@@ -1,62 +1,30 @@
 package pipeline
 
+type Pipeline[T any] interface {
+	PipelineSetup[T]
+	PiplineExecute[T]
+}
+
+type PipelineSetup[T any] interface {
+	Concurrency(int) Pipeline[T]
+	Prefilter(func(T) bool) Pipeline[T]
+	Postfilter(func(T) bool) Pipeline[T]
+	TransformWithFilter(func(T) (T, bool, error)) Pipeline[T]
+	MustTransformWithFilter(func(T) (T, bool)) Pipeline[T]
+	Transform(func(T) (T, error)) Pipeline[T]
+	MustTransform(func(T) T) Pipeline[T]
+}
+
 // context is deliberately left out - instead the individual filter/transform functions are expected to be context aware if really needed
 // streaming ends when input channel is closed - until then it blocks
-type Pipeline[T any] interface {
+type PiplineExecute[T any] interface {
 	Apply([]T) ([]T, error)
 	ApplyAndFold([]T, FoldOperation[T]) (T, error)
 	Stream(<-chan T, chan<- T) error
 }
 
-type Option[T any] interface {
-	init(*pipeline[T])
-}
-
-func New[T any](options ...Option[T]) Pipeline[T] {
-	return newPipeline(options)
-}
-
-// Options
-func Concurrency[T any](c int) Option[T] {
-	return concurrency[T]{
-		concurrency: c,
-	}
-}
-
-func PreFilter[T any](allowFunc func(T) bool) Option[T] {
-	return preFilter[T]{
-		allowFunc: allowFunc,
-	}
-}
-
-func PostFilter[T any](allowFunc func(T) bool) Option[T] {
-	return postFilter[T]{
-		allowFunc: allowFunc,
-	}
-}
-
-func TransformWithFilter[T any](transformFunc func(T) (T, bool, error)) Option[T] {
-	return transformer[T]{
-		transformFuncWithFilter: transformFunc,
-	}
-}
-
-func MustTransformWithFilter[T any](transformFunc func(T) (T, bool)) Option[T] {
-	return transformer[T]{
-		mustTransformFuncWithFilter: transformFunc,
-	}
-}
-
-func Transform[T any](transformFunc func(T) (T, error)) Option[T] {
-	return transformer[T]{
-		transformFunc: transformFunc,
-	}
-}
-
-func MustTransform[T any](transformFunc func(T) T) Option[T] {
-	return transformer[T]{
-		mustTransformFunc: transformFunc,
-	}
+func New[T any]() Pipeline[T] {
+	return newPipeline[T]()
 }
 
 // folds two T elements into one

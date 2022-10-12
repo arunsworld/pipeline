@@ -30,12 +30,12 @@ func run(name string, concurrency int) error {
 		return err
 	}
 
-	result, _ := p.New(
-		p.Concurrency[*paragraph](concurrency),
-		p.PreFilter(filterWarAndPeaceSuperfluousLines),
-		p.MustTransform(splitParaIntoWords()),
-		p.MustTransform(removeStopWords()),
-	).ApplyAndFold(b, p.NewMustFoldOperation(summarize))
+	result, _ := p.New[*paragraph]().
+		Concurrency(concurrency).
+		Prefilter(filterWarAndPeaceSuperfluousLines).
+		MustTransform(splitParaIntoWords()).
+		MustTransform(removeStopWords()).
+		ApplyAndFold(b, p.NewMustFoldOperation(summarize))
 
 	fmt.Println(result.String())
 
