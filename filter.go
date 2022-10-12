@@ -4,38 +4,24 @@ type preFilter[T any] struct {
 	allowFunc func(T) bool
 }
 
-func (p preFilter[T]) init(v pipeline[T]) pipeline[T] {
-	// v.preFilters = append(v.preFilter, newFilterOperation(p.allowFunc))
-	return v
+func (p preFilter[T]) init(v *pipeline[T]) {
+	v.addPreFilter(p.allowFunc)
 }
 
-func newFilterOperation[T any](allowFunc func(T) bool) FilterOperation[T] {
-	return filterOperation[T]{
-		allowFunc: allowFunc,
-	}
-}
-
-type filterOperation[T any] struct {
+type postFilter[T any] struct {
 	allowFunc func(T) bool
 }
 
-func (fo filterOperation[T]) Allow(v T) bool {
-	return fo.allowFunc(v)
+func (p postFilter[T]) init(v *pipeline[T]) {
+	v.addPostFilter(p.allowFunc)
 }
 
-func chainFilters[T any](filters []FilterOperation[T]) FilterOperation[T] {
-	return newFilterOperation(func(v T) bool {
-		for _, filter := range filters {
-			if !filter.Allow(v) {
-				return false
-			}
-		}
-		return true
-	})
+func noopAllow[T any](T) bool { return true }
+
+type concurrency[T any] struct {
+	concurrency int
 }
 
-func noopFilter[T any]() FilterOperation[T] {
-	return newFilterOperation(func(v T) bool {
-		return true
-	})
+func (c concurrency[T]) init(v *pipeline[T]) {
+	v.concurrency = c.concurrency
 }

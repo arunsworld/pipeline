@@ -1,66 +1,35 @@
 package pipeline
 
-func newTransformAndFilterOperation[T any](transformFunc func(T) (T, bool, error)) TransformOperation[T] {
-	return transformOperation[T]{
-		transformFunc: transformFunc,
+type transformer[T any] struct {
+	transformFuncWithFilter     func(T) (T, bool, error)
+	mustTransformFuncWithFilter func(T) (T, bool)
+	transformFunc               func(T) (T, error)
+	mustTransformFunc           func(T) T
+}
+
+func (t transformer[T]) init(v *pipeline[T]) {
+	switch {
+	case t.transformFuncWithFilter != nil:
+		v.addTransformFunc(t.transformFuncWithFilter)
+	case t.mustTransformFuncWithFilter != nil:
+		v.addTransformFunc(func(v T) (T, bool, error) {
+			newv, ok := t.mustTransformFuncWithFilter(v)
+			return newv, ok, nil
+		})
+	case t.transformFunc != nil:
+		v.addTransformFunc(func(v T) (T, bool, error) {
+			newv, err := t.transformFunc(v)
+			return newv, true, err
+		})
+	case t.mustTransformFunc != nil:
+		v.addTransformFunc(func(v T) (T, bool, error) {
+			newv := t.mustTransformFunc(v)
+			return newv, true, nil
+		})
+	default:
 	}
 }
 
-func newMustTransformAndFilterOperation[T any](transformFunc func(T) (T, bool)) TransformOperation[T] {
-	return transformOperation[T]{
-		transformFunc: func(v T) (T, bool, error) {
-			v, ok := transformFunc(v)
-			return v, ok, nil
-		},
-	}
-}
-
-func newTransformOperation[T any](transformFunc func(T) (T, error)) TransformOperation[T] {
-	return transformOperation[T]{
-		transformFunc: func(v T) (T, bool, error) {
-			v, err := transformFunc(v)
-			return v, true, err
-		},
-	}
-}
-
-func newMustTransformOperation[T any](transformFunc func(T) T) TransformOperation[T] {
-	return transformOperation[T]{
-		transformFunc: func(v T) (T, bool, error) {
-			v = transformFunc(v)
-			return v, true, nil
-		},
-	}
-}
-
-type transformOperation[T any] struct {
-	transformFunc func(T) (T, bool, error)
-}
-
-func (to transformOperation[T]) Transform(v T) (T, bool, error) {
-	return to.transformFunc(v)
-}
-
-func chainedTransformers[T any](transformers []TransformOperation[T]) TransformOperation[T] {
-	return transformOperation[T]{
-		transformFunc: func(v T) (T, bool, error) {
-			for _, transformer := range transformers {
-				newv, ok, err := transformer.Transform(v)
-				if err != nil {
-					return v, ok, err
-				}
-				if !ok {
-					return v, false, nil
-				}
-				v = newv
-			}
-			return v, true, nil
-		},
-	}
-}
-
-func noopTransformer[T any]() TransformOperation[T] {
-	return newMustTransformOperation(func(v T) T {
-		return v
-	})
+func noopTransformFunc[T any](v T) (T, bool, error) {
+	return v, true, nil
 }

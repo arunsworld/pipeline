@@ -7,42 +7,28 @@ import (
 	"github.com/arunsworld/nursery"
 )
 
-func newPipeline[T any](components Components[T]) Pipeline[T] {
-	concurrency := 1
-	if components.Concurrency > 1 {
-		concurrency = components.Concurrency
+func newPipeline[T any](options []Option[T]) Pipeline[T] {
+	result := &pipeline[T]{}
+	for _, o := range options {
+		o.init(result)
 	}
-	var preFilter FilterOperation[T]
-	if len(components.PreFilters) > 0 {
-		preFilter = chainFilters(components.PreFilters)
-	} else {
-		preFilter = noopFilter[T]()
+	if result.preFilterAllowFunc == nil {
+		result.preFilterAllowFunc = noopAllow[T]
 	}
-	var transformer TransformOperation[T]
-	if len(components.Transformers) > 0 {
-		transformer = chainedTransformers(components.Transformers)
-	} else {
-		transformer = noopTransformer[T]()
+	if result.postFilterAllowFunc == nil {
+		result.postFilterAllowFunc = noopAllow[T]
 	}
-	var postFilter FilterOperation[T]
-	if len(components.PostFilters) > 0 {
-		postFilter = chainFilters(components.PostFilters)
-	} else {
-		postFilter = noopFilter[T]()
+	if result.transformFunc == nil {
+		result.transformFunc = noopTransformFunc[T]
 	}
-	return pipeline[T]{
-		concurrency: concurrency,
-		preFilter:   preFilter,
-		transformer: transformer,
-		postFilter:  postFilter,
-	}
+	return *result
 }
 
 type pipeline[T any] struct {
-	concurrency int
-	preFilter   FilterOperation[T]
-	transformer TransformOperation[T]
-	postFilter  FilterOperation[T]
+	concurrency         int
+	preFilterAllowFunc  func(T) bool
+	postFilterAllowFunc func(T) bool
+	transformFunc       func(T) (T, bool, error)
 }
 
 func (p pipeline[T]) Apply(input []T) ([]T, error) {
@@ -72,18 +58,70 @@ func (p pipeline[T]) Stream(inCh <-chan T, outCh chan<- T) error {
 	}
 }
 
+func (p *pipeline[T]) addPreFilter(allowFunc func(T) bool) {
+	if p.preFilterAllowFunc == nil {
+		p.preFilterAllowFunc = allowFunc
+		return
+	}
+	prevFunc := p.preFilterAllowFunc
+	p.preFilterAllowFunc = func(v T) bool {
+		if !prevFunc(v) {
+			return false
+		}
+		if !allowFunc(v) {
+			return false
+		}
+		return true
+	}
+}
+
+func (p *pipeline[T]) addPostFilter(allowFunc func(T) bool) {
+	if p.postFilterAllowFunc == nil {
+		p.postFilterAllowFunc = allowFunc
+		return
+	}
+	prevFunc := p.postFilterAllowFunc
+	p.postFilterAllowFunc = func(v T) bool {
+		if !prevFunc(v) {
+			return false
+		}
+		if !allowFunc(v) {
+			return false
+		}
+		return true
+	}
+}
+
+func (p *pipeline[T]) addTransformFunc(transformFunc func(T) (T, bool, error)) {
+	if p.transformFunc == nil {
+		p.transformFunc = transformFunc
+		return
+	}
+	prevFunc := p.transformFunc
+	p.transformFunc = func(v T) (T, bool, error) {
+		newv, ok, err := prevFunc(v)
+		if err != nil {
+			return newv, true, err
+		}
+		if !ok {
+			return newv, false, nil
+		}
+		return transformFunc(newv)
+	}
+}
+
 func (p pipeline[T]) process(v T) (T, bool, error) {
-	if !p.preFilter.Allow(v) {
+	if !p.preFilterAllowFunc(v) {
 		return v, false, nil
 	}
-	v, ok, err := p.transformer.Transform(v)
+	v, ok, err := p.transformFunc(v)
 	if err != nil {
 		return v, ok, err
 	}
 	if !ok {
 		return v, false, nil
 	}
-	if !p.postFilter.Allow(v) {
+	if !p.postFilterAllowFunc(v) {
 		return v, false, nil
 	}
 	return v, true, nil

@@ -9,7 +9,18 @@ type Pipeline[T any] interface {
 }
 
 type Option[T any] interface {
-	init(pipeline[T]) pipeline[T]
+	init(*pipeline[T])
+}
+
+func New[T any](options ...Option[T]) Pipeline[T] {
+	return newPipeline(options)
+}
+
+// Options
+func Concurrency[T any](c int) Option[T] {
+	return concurrency[T]{
+		concurrency: c,
+	}
 }
 
 func PreFilter[T any](allowFunc func(T) bool) Option[T] {
@@ -18,54 +29,34 @@ func PreFilter[T any](allowFunc func(T) bool) Option[T] {
 	}
 }
 
-type Components[T any] struct {
-	PreFilters   []FilterOperation[T]
-	Transformers []TransformOperation[T]
-	PostFilters  []FilterOperation[T]
-	Concurrency  int
+func PostFilter[T any](allowFunc func(T) bool) Option[T] {
+	return postFilter[T]{
+		allowFunc: allowFunc,
+	}
 }
 
-func New[T any](components Components[T]) Pipeline[T] {
-	return newPipeline(components)
+func TransformWithFilter[T any](transformFunc func(T) (T, bool, error)) Option[T] {
+	return transformer[T]{
+		transformFuncWithFilter: transformFunc,
+	}
 }
 
-// operation that evaluates whether an element should stay or not
-type FilterOperation[T any] interface {
-	Allow(T) bool
+func MustTransformWithFilter[T any](transformFunc func(T) (T, bool)) Option[T] {
+	return transformer[T]{
+		mustTransformFuncWithFilter: transformFunc,
+	}
 }
 
-// filterFunc function - returning true causes an element to stay; false causes it to be discarded
-// function should be thread-safe
-func NewFilterOperation[T any](allowFunc func(T) bool) FilterOperation[T] {
-	return newFilterOperation(allowFunc)
+func Transform[T any](transformFunc func(T) (T, error)) Option[T] {
+	return transformer[T]{
+		transformFunc: transformFunc,
+	}
 }
 
-// operations that transforms an element to another
-// alternatively may ask to be filtered out
-// or return a terminal error
-type TransformOperation[T any] interface {
-	Transform(T) (T, bool, error)
-}
-
-// transformFunc should handle transformation, judgement on filtration and error
-// function should be threadsafe
-func NewTransformAndFilterOperation[T any](transformFunc func(T) (T, bool, error)) TransformOperation[T] {
-	return newTransformAndFilterOperation(transformFunc)
-}
-
-// transformFunc should handle transformation and judgement on filtration
-func NewMustTransformAndFilterOperation[T any](transformFunc func(T) (T, bool)) TransformOperation[T] {
-	return newMustTransformAndFilterOperation(transformFunc)
-}
-
-// transformFunc should handle transformation error - all elements are passed through
-func NewTransformOperation[T any](transformFunc func(T) (T, error)) TransformOperation[T] {
-	return newTransformOperation(transformFunc)
-}
-
-// transformFunc should handle transformation - no error should be possible; all elements are passed through
-func NewMustTransformOperation[T any](transformFunc func(T) T) TransformOperation[T] {
-	return newMustTransformOperation(transformFunc)
+func MustTransform[T any](transformFunc func(T) T) Option[T] {
+	return transformer[T]{
+		mustTransformFunc: transformFunc,
+	}
 }
 
 // folds two T elements into one

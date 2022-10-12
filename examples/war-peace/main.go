@@ -30,18 +30,12 @@ func run(name string, concurrency int) error {
 		return err
 	}
 
-	components := p.Components[*paragraph]{
-		Concurrency: concurrency,
-		PreFilters: []p.FilterOperation[*paragraph]{
-			p.NewFilterOperation(filterWarAndPeaceSuperfluousLines),
-		},
-		Transformers: []p.TransformOperation[*paragraph]{
-			p.NewMustTransformOperation(splitParaIntoWords()),
-			p.NewMustTransformOperation(removeStopWords()),
-		},
-	}
-
-	result, _ := p.New(components).ApplyAndFold(b, p.NewMustFoldOperation(summarize))
+	result, _ := p.New(
+		p.Concurrency[*paragraph](concurrency),
+		p.PreFilter(filterWarAndPeaceSuperfluousLines),
+		p.MustTransform(splitParaIntoWords()),
+		p.MustTransform(removeStopWords()),
+	).ApplyAndFold(b, p.NewMustFoldOperation(summarize))
 
 	fmt.Println(result.String())
 
