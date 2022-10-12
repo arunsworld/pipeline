@@ -7,10 +7,7 @@ type Pipeline[T any] interface {
 
 type PipelineSetup[T any] interface {
 	Concurrency(int) Pipeline[T]
-	Prefilter(func(T) bool) Pipeline[T]
-	Postfilter(func(T) bool) Pipeline[T]
-	TransformWithFilter(func(T) (T, bool, error)) Pipeline[T]
-	MustTransformWithFilter(func(T) (T, bool)) Pipeline[T]
+	Filter(func(T) bool) Pipeline[T]
 	Transform(func(T) (T, error)) Pipeline[T]
 	MustTransform(func(T) T) Pipeline[T]
 }

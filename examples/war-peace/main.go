@@ -32,7 +32,7 @@ func run(name string, concurrency int) error {
 
 	result, _ := p.New[*paragraph]().
 		Concurrency(concurrency).
-		Prefilter(filterWarAndPeaceSuperfluousLines).
+		Filter(filterWarAndPeaceSuperfluousLines).
 		MustTransform(splitParaIntoWords()).
 		MustTransform(removeStopWords()).
 		ApplyAndFold(b, p.NewMustFoldOperation(summarize))

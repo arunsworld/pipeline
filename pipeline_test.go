@@ -14,11 +14,11 @@ func Test_Pipeline_With_Filters_And_Transformers(t *testing.T) {
 
 		t.Run("sequentially", func(t *testing.T) {
 			pp := p.New[int]().
-				Prefilter(evenFilter).
-				Prefilter(multiplesOf10Remover).
+				Filter(evenFilter).
+				Filter(multiplesOf10Remover).
 				MustTransform(squareTransformer).
 				MustTransform(adderTransformer(3)).
-				Postfilter(multiplesOfNRemover(3))
+				Filter(multiplesOfNRemover(3))
 			output, err := pp.Apply(input)
 			if err != nil {
 				t.Fatal(err)
@@ -30,11 +30,11 @@ func Test_Pipeline_With_Filters_And_Transformers(t *testing.T) {
 
 		t.Run("concurrently", func(t *testing.T) {
 			pp := p.New[int]().
-				Prefilter(evenFilter).
-				Prefilter(multiplesOf10Remover).
+				Filter(evenFilter).
+				Filter(multiplesOf10Remover).
 				MustTransform(squareTransformer).
 				MustTransform(adderTransformer(3)).
-				Postfilter(multiplesOfNRemover(3))
+				Filter(multiplesOfNRemover(3))
 			output, err := pp.Apply(input)
 			if err != nil {
 				t.Fatal(err)

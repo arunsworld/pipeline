@@ -9,18 +9,14 @@ import (
 
 func newPipeline[T any]() Pipeline[T] {
 	return &pipeline[T]{
-		concurrency:         1,
-		preFilterAllowFunc:  noopAllow[T],
-		transformFunc:       noopTransformFunc[T],
-		postFilterAllowFunc: noopAllow[T],
+		concurrency:   1,
+		transformFunc: noopTransformFunc[T],
 	}
 }
 
 type pipeline[T any] struct {
-	concurrency         int
-	preFilterAllowFunc  func(T) bool
-	postFilterAllowFunc func(T) bool
-	transformFunc       func(T) (T, bool, error)
+	concurrency   int
+	transformFunc func(T) (T, bool, error)
 }
 
 // Setup
@@ -29,20 +25,9 @@ func (p pipeline[T]) Concurrency(c int) Pipeline[T] {
 	return p
 }
 
-func (p pipeline[T]) Prefilter(allowFunc func(T) bool) Pipeline[T] {
-	p.addPreFilter(allowFunc)
-	return p
-}
-
-func (p pipeline[T]) TransformWithFilter(transformFunc func(T) (T, bool, error)) Pipeline[T] {
-	p.addTransformFunc(transformFunc)
-	return p
-}
-
-func (p pipeline[T]) MustTransformWithFilter(transformFunc func(T) (T, bool)) Pipeline[T] {
+func (p pipeline[T]) Filter(allowFunc func(T) bool) Pipeline[T] {
 	p.addTransformFunc(func(v T) (T, bool, error) {
-		newv, ok := transformFunc(v)
-		return newv, ok, nil
+		return v, allowFunc(v), nil
 	})
 	return p
 }
@@ -59,11 +44,6 @@ func (p pipeline[T]) MustTransform(transformFunc func(T) T) Pipeline[T] {
 	p.addTransformFunc(func(v T) (T, bool, error) {
 		return transformFunc(v), true, nil
 	})
-	return p
-}
-
-func (p pipeline[T]) Postfilter(allowFunc func(T) bool) Pipeline[T] {
-	p.addPostFilter(allowFunc)
 	return p
 }
 
@@ -95,45 +75,7 @@ func (p pipeline[T]) Stream(inCh <-chan T, outCh chan<- T) error {
 	}
 }
 
-func (p *pipeline[T]) addPreFilter(allowFunc func(T) bool) {
-	if p.preFilterAllowFunc == nil {
-		p.preFilterAllowFunc = allowFunc
-		return
-	}
-	prevFunc := p.preFilterAllowFunc
-	p.preFilterAllowFunc = func(v T) bool {
-		if !prevFunc(v) {
-			return false
-		}
-		if !allowFunc(v) {
-			return false
-		}
-		return true
-	}
-}
-
-func (p *pipeline[T]) addPostFilter(allowFunc func(T) bool) {
-	if p.postFilterAllowFunc == nil {
-		p.postFilterAllowFunc = allowFunc
-		return
-	}
-	prevFunc := p.postFilterAllowFunc
-	p.postFilterAllowFunc = func(v T) bool {
-		if !prevFunc(v) {
-			return false
-		}
-		if !allowFunc(v) {
-			return false
-		}
-		return true
-	}
-}
-
 func (p *pipeline[T]) addTransformFunc(transformFunc func(T) (T, bool, error)) {
-	if p.transformFunc == nil {
-		p.transformFunc = transformFunc
-		return
-	}
 	prevFunc := p.transformFunc
 	p.transformFunc = func(v T) (T, bool, error) {
 		newv, ok, err := prevFunc(v)
@@ -147,27 +89,10 @@ func (p *pipeline[T]) addTransformFunc(transformFunc func(T) (T, bool, error)) {
 	}
 }
 
-func (p pipeline[T]) process(v T) (T, bool, error) {
-	if !p.preFilterAllowFunc(v) {
-		return v, false, nil
-	}
-	v, ok, err := p.transformFunc(v)
-	if err != nil {
-		return v, ok, err
-	}
-	if !ok {
-		return v, false, nil
-	}
-	if !p.postFilterAllowFunc(v) {
-		return v, false, nil
-	}
-	return v, true, nil
-}
-
 func (p pipeline[T]) applySequential(input []T) ([]T, error) {
 	result := make([]T, 0, len(input))
 	for _, v := range input {
-		v, ok, err := p.process(v)
+		v, ok, err := p.transformFunc(v)
 		if err != nil {
 			return nil, err
 		}
@@ -226,7 +151,7 @@ func (p pipeline[T]) applyConcurrent(input []T) ([]T, error) {
 
 func (p pipeline[T]) streamSequential(inCh <-chan T, outCh chan<- T) error {
 	for v := range inCh {
-		v, ok, err := p.process(v)
+		v, ok, err := p.transformFunc(v)
 		if err != nil {
 			return err
 		}
@@ -247,7 +172,7 @@ func (p pipeline[T]) streamConcurrent(inCh <-chan T, outCh chan<- T) error {
 					if !ok {
 						return
 					}
-					v, ok, err := p.process(v)
+					v, ok, err := p.transformFunc(v)
 					if err != nil {
 						errCh <- err
 						return
@@ -273,7 +198,7 @@ func (p pipeline[T]) streamConcurrentElementsWithIndex(inCh <-chan elementWithIn
 					if !ok {
 						return
 					}
-					data, ok, err := p.process(v.data)
+					data, ok, err := p.transformFunc(v.data)
 					if err != nil {
 						errCh <- err
 						return
@@ -297,7 +222,7 @@ func (p pipeline[T]) applyAndFoldSequential(input []T, foldOp FoldOperation[T]) 
 	}
 	nextIdx := 0
 	for idx, v := range input {
-		v, ok, err := p.process(v)
+		v, ok, err := p.transformFunc(v)
 		if err != nil {
 			return result, err
 		}
@@ -312,7 +237,7 @@ func (p pipeline[T]) applyAndFoldSequential(input []T, foldOp FoldOperation[T]) 
 		return result, nil
 	}
 	for i := nextIdx; i < len(input); i++ {
-		v, ok, err := p.process(input[i])
+		v, ok, err := p.transformFunc(input[i])
 		if err != nil {
 			return result, err
 		}
@@ -335,7 +260,7 @@ func (p pipeline[T]) applyAndFoldConcurrently(input []T, foldOp FoldOperation[T]
 	}
 	nextIdx := 0
 	for idx, v := range input {
-		v, ok, err := p.process(v)
+		v, ok, err := p.transformFunc(v)
 		if err != nil {
 			return result, err
 		}
@@ -380,7 +305,7 @@ func (p pipeline[T]) applyAndFoldConcurrently(input []T, foldOp FoldOperation[T]
 							if !ok {
 								return
 							}
-							v, ok, err := p.process(v)
+							v, ok, err := p.transformFunc(v)
 							if err != nil {
 								errCh <- err
 								return
